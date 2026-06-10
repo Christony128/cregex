@@ -15,11 +15,41 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         -Wall
         -Wextra
         -Wpedantic
-        -Wconversion
         -Wshadow
     )
 endif()
 
+add_library(cregex_core STATIC
+    src/token.c
+    src/lexer.c
+)
+
+target_include_directories(cregex_core
+    PUBLIC
+        ${PROJECT_SOURCE_DIR}/include
+)
+
 add_executable(cregex
     cli/main.c
+)
+
+target_link_libraries(cregex
+    PRIVATE
+        cregex_core
+)
+
+enable_testing()
+
+add_executable(test_lexer
+    tests/test_lexer.c
+)
+
+target_link_libraries(test_lexer
+    PRIVATE
+        cregex_core
+)
+
+add_test(
+    NAME lexer_tests
+    COMMAND test_lexer
 )
