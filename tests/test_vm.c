@@ -228,6 +228,58 @@ static void test_shorthand_classes(void)
     expect_full_match("\\s+", "abc", 0);
 }
 
+static void test_bracket_character_classes(void)
+{
+    expect_full_match("[abc]", "a", 1);
+    expect_full_match("[abc]", "b", 1);
+    expect_full_match("[abc]", "d", 0);
+
+    expect_full_match("[a-z]+", "hello", 1);
+    expect_full_match("[a-z]+", "Hello", 0);
+
+    expect_full_match(
+        "[a-zA-Z0-9_]+",
+        "User_123",
+        1
+    );
+
+    expect_full_match(
+        "[a-zA-Z0-9_]+",
+        "User-123",
+        0
+    );
+
+    expect_full_match(
+        "[^0-9]+",
+        "hello",
+        1
+    );
+
+    expect_full_match(
+        "[^0-9]+",
+        "abc4",
+        0
+    );
+
+    expect_full_match(
+        "[\\]\\-]+",
+        "]-]-",
+        1
+    );
+
+    expect_full_match(
+        "[\\dA-F]+",
+        "19AF",
+        1
+    );
+
+    expect_full_match(
+        "[\\dA-F]+",
+        "19AG",
+        0
+    );
+}
+
 static void test_anchors(void)
 {
     expect_full_match("^abc$", "abc", 1);
@@ -336,6 +388,25 @@ static void test_search_with_anchors(void)
     );
 }
 
+static void test_search_with_character_class(void)
+{
+    expect_search(
+        "[0-9]+",
+        "abc123xyz",
+        1,
+        3U,
+        6U
+    );
+
+    expect_search(
+        "[A-Z][a-z]+",
+        "hello World 123",
+        1,
+        6U,
+        11U
+    );
+}
+
 static void test_empty_search_matches(void)
 {
     expect_search(
@@ -354,35 +425,7 @@ static void test_empty_search_matches(void)
         0U
     );
 }
-static void test_bracket_character_classes(void)
-{
-    expect_full_match("[abc]", "a", 1);
-    expect_full_match("[abc]", "b", 1);
-    expect_full_match("[abc]", "d", 0);
 
-    expect_full_match("[a-z]+", "hello", 1);
-    expect_full_match("[a-z]+", "Hello", 0);
-
-    expect_full_match(
-        "[a-zA-Z0-9_]+",
-        "User_123",
-        1
-    );
-
-    expect_full_match(
-        "[a-zA-Z0-9_]+",
-        "User-123",
-        0
-    );
-
-    expect_full_match("[^0-9]+", "hello", 1);
-    expect_full_match("[^0-9]+", "abc4", 0);
-
-    expect_full_match("[\\]\\-]+", "]-]-", 1);
-
-    expect_full_match("[\\dA-F]+", "19AF", 1);
-    expect_full_match("[\\dA-F]+", "19AG", 0);
-}
 int main(void)
 {
     test_literals();
@@ -393,14 +436,16 @@ int main(void)
     test_groups();
     test_dot();
     test_shorthand_classes();
+    test_bracket_character_classes();
     test_anchors();
     test_empty_pattern();
     test_nested_repetition();
-    test_bracket_character_classes();
+
     test_basic_search();
     test_leftmost_search();
     test_leftmost_longest_search();
     test_search_with_anchors();
+    test_search_with_character_class();
     test_empty_search_matches();
 
     puts("All VM tests passed.");

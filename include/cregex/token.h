@@ -34,6 +34,7 @@ typedef struct {
     TokenType type;
     unsigned char character;
     size_t position;
+
     const char *error_message;
 } Token;
 

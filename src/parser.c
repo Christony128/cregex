@@ -34,7 +34,8 @@ static void parser_advance(Parser *parser)
         return;
     }
 
-    parser->current = lexer_next(&parser->lexer);
+    parser->current =
+        lexer_next(&parser->lexer);
 
     if (parser->current.type == TOKEN_ERROR) {
         parser_set_error(
@@ -51,10 +52,10 @@ static int token_starts_atom(TokenType type)
         case TOKEN_LITERAL:
         case TOKEN_DOT:
         case TOKEN_LPAREN:
+        case TOKEN_LBRACKET:
         case TOKEN_CARET:
         case TOKEN_DOLLAR:
         case TOKEN_DIGIT_CLASS:
-        case TOKEN_LBRACKET:
         case TOKEN_WORD_CLASS:
         case TOKEN_SPACE_CLASS:
             return 1;
@@ -85,7 +86,11 @@ static AstNode *make_unary_node(
 {
     AstNode *node;
 
-    node = ast_make_unary(type, child, position);
+    node = ast_make_unary(
+        type,
+        child,
+        position
+    );
 
     if (node == NULL) {
         ast_free(child);
@@ -134,6 +139,7 @@ static AstNode *make_binary_node(
 
     return node;
 }
+
 static int class_token_to_character(
     Token token,
     unsigned char *character
@@ -206,9 +212,7 @@ static AstNode *parse_character_class(
 
     negated = 0;
     item_count = 0;
-
     parser_advance(parser);
-
     if (parser->current.type == TOKEN_CARET) {
         negated = 1;
         parser_advance(parser);
@@ -228,11 +232,11 @@ static AstNode *parse_character_class(
         !parser->failed &&
         parser->current.type != TOKEN_RBRACKET
     ) {
-        Token token;
+        Token first_token;
 
-        token = parser->current;
+        first_token = parser->current;
 
-        if (token.type == TOKEN_END) {
+        if (first_token.type == TOKEN_END) {
             parser_set_error(
                 parser,
                 opening.position,
@@ -243,32 +247,33 @@ static AstNode *parse_character_class(
         }
 
         if (
-            token.type == TOKEN_DIGIT_CLASS ||
-            token.type == TOKEN_WORD_CLASS ||
-            token.type == TOKEN_SPACE_CLASS
+            first_token.type == TOKEN_DIGIT_CLASS ||
+            first_token.type == TOKEN_WORD_CLASS ||
+            first_token.type == TOKEN_SPACE_CLASS
         ) {
             add_shorthand_class(
                 &set,
-                token.type
+                first_token.type
             );
 
             item_count++;
             parser_advance(parser);
+
             continue;
         }
 
         {
-            unsigned char first;
+            unsigned char first_character;
 
             if (
                 !class_token_to_character(
-                    token,
-                    &first
+                    first_token,
+                    &first_character
                 )
             ) {
                 parser_set_error(
                     parser,
-                    token.position,
+                    first_token.position,
                     "invalid token inside character class"
                 );
 
@@ -278,24 +283,17 @@ static AstNode *parse_character_class(
             parser_advance(parser);
 
             if (parser->current.type == TOKEN_DASH) {
-                Token after_dash;
+                Token token_after_dash;
 
-                after_dash =
+                token_after_dash =
                     lexer_peek(&parser->lexer);
-
-                /*
-                 * A dash immediately before ] is a
-                 * literal dash:
-                 *
-                 *     [a-]
-                 */
                 if (
-                    after_dash.type ==
+                    token_after_dash.type ==
                     TOKEN_RBRACKET
                 ) {
                     charset_add_char(
                         &set,
-                        first
+                        first_character
                     );
 
                     charset_add_char(
@@ -304,20 +302,19 @@ static AstNode *parse_character_class(
                     );
 
                     item_count += 2;
-
                     parser_advance(parser);
+
                     continue;
                 }
-
                 parser_advance(parser);
 
                 {
-                    unsigned char last;
+                    unsigned char last_character;
 
                     if (
                         !class_token_to_character(
                             parser->current,
-                            &last
+                            &last_character
                         )
                     ) {
                         parser_set_error(
@@ -329,21 +326,31 @@ static AstNode *parse_character_class(
                         return NULL;
                     }
 
-                    if (first > last) {
+                    if (first_character > last_character) {
                         parser_set_error(
                             parser,
-                            token.position,
+                            first_token.position,
                             "character range is reversed"
                         );
 
                         return NULL;
                     }
 
-                    charset_add_range(
-                        &set,
-                        first,
-                        last
-                    );
+                    if (
+                        !charset_add_range(
+                            &set,
+                            first_character,
+                            last_character
+                        )
+                    ) {
+                        parser_set_error(
+                            parser,
+                            first_token.position,
+                            "failed to add character range"
+                        );
+
+                        return NULL;
+                    }
 
                     item_count++;
                     parser_advance(parser);
@@ -351,7 +358,7 @@ static AstNode *parse_character_class(
             } else {
                 charset_add_char(
                     &set,
-                    first
+                    first_character
                 );
 
                 item_count++;
@@ -382,7 +389,6 @@ static AstNode *parse_character_class(
 
         return NULL;
     }
-
     parser_advance(parser);
 
     charset_set_negated(
@@ -409,6 +415,7 @@ static AstNode *parse_character_class(
         return node;
     }
 }
+
 static AstNode *parse_atom(Parser *parser)
 {
     AstNode *node;
@@ -454,8 +461,10 @@ static AstNode *parse_atom(Parser *parser)
             }
 
             return node;
+
         case TOKEN_LBRACKET:
             return parse_character_class(parser);
+
         case TOKEN_CARET:
             parser_advance(parser);
 
@@ -494,6 +503,7 @@ static AstNode *parse_atom(Parser *parser)
 
         case TOKEN_DIGIT_CLASS:
             parser_advance(parser);
+
             set = charset_digit();
 
             node = ast_make_character_class(
@@ -513,6 +523,7 @@ static AstNode *parse_atom(Parser *parser)
 
         case TOKEN_WORD_CLASS:
             parser_advance(parser);
+
             set = charset_word();
 
             node = ast_make_character_class(
@@ -532,6 +543,7 @@ static AstNode *parse_atom(Parser *parser)
 
         case TOKEN_SPACE_CLASS:
             parser_advance(parser);
+
             set = charset_space();
 
             node = ast_make_character_class(
@@ -553,6 +565,7 @@ static AstNode *parse_atom(Parser *parser)
             size_t opening_position;
 
             opening_position = token.position;
+
             parser_advance(parser);
 
             if (
@@ -587,6 +600,7 @@ static AstNode *parse_atom(Parser *parser)
             }
 
             parser_advance(parser);
+
             return node;
         }
 
@@ -606,6 +620,24 @@ static AstNode *parse_atom(Parser *parser)
                 parser,
                 token.position,
                 "unexpected closing parenthesis"
+            );
+
+            return NULL;
+
+        case TOKEN_RBRACKET:
+            parser_set_error(
+                parser,
+                token.position,
+                "unexpected closing bracket"
+            );
+
+            return NULL;
+
+        case TOKEN_DASH:
+            parser_set_error(
+                parser,
+                token.position,
+                "unexpected range operator"
             );
 
             return NULL;
@@ -634,25 +666,8 @@ static AstNode *parse_atom(Parser *parser)
                 token.position,
                 token.error_message
             );
-            case TOKEN_RBRACKET:
-        parser_set_error(
-            parser,
-            token.position,
-            "unexpected closing bracket"
-        );
 
-        return NULL;
-
-        case TOKEN_DASH:
-            parser_set_error(
-                parser,
-                token.position,
-                "unexpected range operator"
-            );
-
-        return NULL;
-
-            
+            return NULL;
     }
 
     parser_set_error(
@@ -693,7 +708,9 @@ static AstNode *parse_repetition(Parser *parser)
             return node;
     }
 
-    operator_position = parser->current.position;
+    operator_position =
+        parser->current.position;
+
     parser_advance(parser);
 
     node = make_unary_node(
@@ -745,11 +762,17 @@ static AstNode *parse_concatenation(Parser *parser)
         return NULL;
     }
 
-    while (token_starts_atom(parser->current.type)) {
+    while (
+        token_starts_atom(
+            parser->current.type
+        )
+    ) {
         AstNode *right;
         size_t position;
 
-        position = parser->current.position;
+        position =
+            parser->current.position;
+
         right = parse_repetition(parser);
 
         if (right == NULL) {
@@ -787,7 +810,9 @@ static AstNode *parse_alternation(Parser *parser)
         AstNode *right;
         size_t pipe_position;
 
-        pipe_position = parser->current.position;
+        pipe_position =
+            parser->current.position;
+
         parser_advance(parser);
 
         if (!token_starts_atom(parser->current.type)) {
@@ -833,23 +858,30 @@ AstNode *parser_parse(
     Parser parser;
     AstNode *root;
 
-    lexer_init(&parser.lexer, pattern);
+    lexer_init(
+        &parser.lexer,
+        pattern
+    );
 
     parser.failed = 0;
-    parser.error.position = 0;
+    parser.error.position = 0U;
     parser.error.message = NULL;
 
     parser_advance(&parser);
+
+    /*
+     * The empty pattern matches the empty string.
+     */
     if (
         !parser.failed &&
         parser.current.type == TOKEN_END
     ) {
-        root = ast_make_empty(0);
+        root = ast_make_empty(0U);
 
         if (root == NULL) {
             parser_set_error(
                 &parser,
-                0,
+                0U,
                 "failed to allocate empty AST node"
             );
         }
@@ -869,6 +901,15 @@ AstNode *parser_parse(
                 &parser,
                 parser.current.position,
                 "unexpected closing parenthesis"
+            );
+        } else if (
+            parser.current.type ==
+            TOKEN_RBRACKET
+        ) {
+            parser_set_error(
+                &parser,
+                parser.current.position,
+                "unexpected closing bracket"
             );
         } else {
             parser_set_error(

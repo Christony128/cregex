@@ -1,10 +1,10 @@
 #ifndef CREGEX_CHARSET_H
 #define CREGEX_CHARSET_H
-
 #define CREGEX_CHARSET_SIZE 32
 
 typedef struct {
     unsigned char bits[CREGEX_CHARSET_SIZE];
+
     int negated;
 } CharSet;
 
@@ -20,6 +20,7 @@ int charset_add_range(
     unsigned char start,
     unsigned char end
 );
+
 void charset_add_set(
     CharSet *destination,
     const CharSet *source
