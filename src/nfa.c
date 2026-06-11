@@ -27,7 +27,7 @@ static int nfa_program_grow(NfaProgram *program)
         return 0;
     }
 
-    if (program->capacity == 0) {
+    if (program->capacity == 0U) {
         new_capacity = NFA_INITIAL_CAPACITY;
     } else {
         new_capacity = program->capacity * 2U;
@@ -66,6 +66,7 @@ static size_t nfa_program_append(
     }
 
     index = program->count;
+
     program->states[index] = state;
     program->count++;
 
@@ -87,6 +88,9 @@ const char *nfa_state_type_name(NfaStateType type)
         case NFA_STATE_SPLIT:
             return "SPLIT";
 
+        case NFA_STATE_JUMP:
+            return "JUMP";
+
         case NFA_STATE_ASSERT_START:
             return "ASSERT_START";
 
@@ -107,8 +111,8 @@ void nfa_program_init(NfaProgram *program)
     }
 
     program->states = NULL;
-    program->count = 0;
-    program->capacity = 0;
+    program->count = 0U;
+    program->capacity = 0U;
     program->start = NFA_INVALID_STATE;
 }
 
@@ -121,8 +125,8 @@ void nfa_program_free(NfaProgram *program)
     free(program->states);
 
     program->states = NULL;
-    program->count = 0;
-    program->capacity = 0;
+    program->count = 0U;
+    program->capacity = 0U;
     program->start = NFA_INVALID_STATE;
 }
 
@@ -141,10 +145,11 @@ size_t nfa_program_add_char(
 
 size_t nfa_program_add_any(NfaProgram *program)
 {
-    return nfa_program_append(
-        program,
-        nfa_make_state(NFA_STATE_ANY)
-    );
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_ANY);
+
+    return nfa_program_append(program, state);
 }
 
 size_t nfa_program_add_class(
@@ -166,34 +171,47 @@ size_t nfa_program_add_class(
 
 size_t nfa_program_add_split(NfaProgram *program)
 {
-    return nfa_program_append(
-        program,
-        nfa_make_state(NFA_STATE_SPLIT)
-    );
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_SPLIT);
+
+    return nfa_program_append(program, state);
+}
+
+size_t nfa_program_add_jump(NfaProgram *program)
+{
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_JUMP);
+
+    return nfa_program_append(program, state);
 }
 
 size_t nfa_program_add_assert_start(NfaProgram *program)
 {
-    return nfa_program_append(
-        program,
-        nfa_make_state(NFA_STATE_ASSERT_START)
-    );
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_ASSERT_START);
+
+    return nfa_program_append(program, state);
 }
 
 size_t nfa_program_add_assert_end(NfaProgram *program)
 {
-    return nfa_program_append(
-        program,
-        nfa_make_state(NFA_STATE_ASSERT_END)
-    );
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_ASSERT_END);
+
+    return nfa_program_append(program, state);
 }
 
 size_t nfa_program_add_match(NfaProgram *program)
 {
-    return nfa_program_append(
-        program,
-        nfa_make_state(NFA_STATE_MATCH)
-    );
+    NfaState state;
+
+    state = nfa_make_state(NFA_STATE_MATCH);
+
+    return nfa_program_append(program, state);
 }
 
 static int nfa_valid_destination(
@@ -290,15 +308,11 @@ void nfa_program_print(
         return;
     }
 
-    fprintf(
-        output,
-        "start: "
-    );
-
+    fputs("start: ", output);
     nfa_print_destination(output, program->start);
     fputc('\n', output);
 
-    for (index = 0; index < program->count; index++) {
+    for (index = 0U; index < program->count; index++) {
         const NfaState *state;
 
         state = &program->states[index];
@@ -317,22 +331,43 @@ void nfa_program_print(
                     "'%c' -> ",
                     state->character
                 );
-                nfa_print_destination(output, state->out1);
+
+                nfa_print_destination(
+                    output,
+                    state->out1
+                );
+
                 break;
 
             case NFA_STATE_ANY:
             case NFA_STATE_CLASS:
+            case NFA_STATE_JUMP:
             case NFA_STATE_ASSERT_START:
             case NFA_STATE_ASSERT_END:
                 fputs("-> ", output);
-                nfa_print_destination(output, state->out1);
+
+                nfa_print_destination(
+                    output,
+                    state->out1
+                );
+
                 break;
 
             case NFA_STATE_SPLIT:
                 fputs("-> ", output);
-                nfa_print_destination(output, state->out1);
+
+                nfa_print_destination(
+                    output,
+                    state->out1
+                );
+
                 fputs(", ", output);
-                nfa_print_destination(output, state->out2);
+
+                nfa_print_destination(
+                    output,
+                    state->out2
+                );
+
                 break;
 
             case NFA_STATE_MATCH:

@@ -26,6 +26,7 @@ add_library(cregex_core STATIC
     src/ast.c
     src/parser.c
     src/nfa.c
+    src/compiler.c
 )
 
 target_include_directories(cregex_core
@@ -85,6 +86,7 @@ add_test(
     NAME parser_tests
     COMMAND test_parser
 )
+
 add_executable(test_nfa
     tests/test_nfa.c
 )
@@ -97,4 +99,18 @@ target_link_libraries(test_nfa
 add_test(
     NAME nfa_tests
     COMMAND test_nfa
+)
+
+add_executable(test_compiler
+    tests/test_compiler.c
+)
+
+target_link_libraries(test_compiler
+    PRIVATE
+        cregex_core
+)
+
+add_test(
+    NAME compiler_tests
+    COMMAND test_compiler
 )

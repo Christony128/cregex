@@ -15,7 +15,8 @@ typedef enum {
     NFA_STATE_SPLIT,
     NFA_STATE_ASSERT_START,
     NFA_STATE_ASSERT_END,
-    NFA_STATE_MATCH
+    NFA_STATE_MATCH,
+    NFA_STATE_JUMP
 } NfaStateType;
 
 typedef struct {
@@ -59,6 +60,7 @@ size_t nfa_program_add_assert_start(NfaProgram *program);
 size_t nfa_program_add_assert_end(NfaProgram *program);
 
 size_t nfa_program_add_match(NfaProgram *program);
+size_t nfa_program_add_jump(NfaProgram *program);
 
 int nfa_program_patch_out1(
     NfaProgram *program,
