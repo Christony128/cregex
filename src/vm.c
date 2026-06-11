@@ -67,9 +67,8 @@ static int vm_initialize(
         return 0;
     }
 
-    state_count = program->count;
-
     vm->program = program;
+
     vm->current = NULL;
     vm->next = NULL;
     vm->work = NULL;
@@ -79,6 +78,8 @@ static int vm_initialize(
     vm->next_count = 0U;
     vm->work_count = 0U;
     vm->generation = 0U;
+
+    state_count = program->count;
 
     if (
         state_count == 0U ||
@@ -122,6 +123,7 @@ static int vm_initialize(
         );
 
         vm_destroy(vm);
+
         return 0;
     }
 
@@ -181,19 +183,6 @@ static int vm_push_unseen_state(
     return 1;
 }
 
-/*
- * Adds a state and follows all epsilon transitions
- * reachable from it.
- *
- * Epsilon-style states:
- *   SPLIT
- *   JUMP
- *   ASSERT_START
- *   ASSERT_END
- *
- * Consuming states and MATCH are placed into the
- * active state list.
- */
 static int vm_add_closure(
     NfaVm *vm,
     size_t *list,
@@ -221,9 +210,12 @@ static int vm_add_closure(
         const NfaState *state;
 
         vm->work_count--;
-        state_index = vm->work[vm->work_count];
 
-        state = &vm->program->states[state_index];
+        state_index =
+            vm->work[vm->work_count];
+
+        state =
+            &vm->program->states[state_index];
 
         switch (state->type) {
             case NFA_STATE_SPLIT:
@@ -293,6 +285,7 @@ static int vm_add_closure(
             case NFA_STATE_MATCH:
                 list[*list_count] = state_index;
                 (*list_count)++;
+
                 break;
         }
     }
@@ -330,19 +323,17 @@ static int state_matches_character(
 }
 
 static int state_list_contains_match(
-    const NfaVm *vm
+    const NfaVm *vm,
+    const size_t *list,
+    size_t list_count
 )
 {
     size_t index;
 
-    for (
-        index = 0U;
-        index < vm->current_count;
-        index++
-    ) {
+    for (index = 0U; index < list_count; index++) {
         size_t state_index;
 
-        state_index = vm->current[index];
+        state_index = list[index];
 
         if (
             vm->program->states[state_index].type ==
@@ -355,6 +346,166 @@ static int state_list_contains_match(
     return 0;
 }
 
+static void vm_swap_state_lists(NfaVm *vm)
+{
+    size_t *temporary_states;
+    size_t temporary_count;
+
+    temporary_states = vm->current;
+    vm->current = vm->next;
+    vm->next = temporary_states;
+
+    temporary_count = vm->current_count;
+    vm->current_count = vm->next_count;
+    vm->next_count = temporary_count;
+}
+static int vm_run_from(
+    NfaVm *vm,
+    const char *text,
+    size_t text_length,
+    size_t start_position,
+    int require_text_end,
+    int *matched,
+    size_t *match_end,
+    VmError *error
+)
+{
+    size_t position;
+    size_t longest_end;
+
+    *matched = 0;
+    *match_end = start_position;
+
+    if (start_position > text_length) {
+        vm_set_error(
+            error,
+            "search start position exceeds input length"
+        );
+
+        return 0;
+    }
+
+    longest_end = NFA_INVALID_STATE;
+
+    vm_begin_state_list(
+        vm,
+        &vm->current_count
+    );
+
+    if (
+        !vm_add_closure(
+            vm,
+            vm->current,
+            &vm->current_count,
+            vm->program->start,
+            start_position,
+            text_length,
+            error
+        )
+    ) {
+        return 0;
+    }
+    if (
+        state_list_contains_match(
+            vm,
+            vm->current,
+            vm->current_count
+        )
+    ) {
+        if (
+            !require_text_end ||
+            start_position == text_length
+        ) {
+            longest_end = start_position;
+        }
+    }
+
+    for (
+        position = start_position;
+        position < text_length;
+        position++
+    ) {
+        size_t list_index;
+        unsigned char character;
+
+        character =
+            (unsigned char) text[position];
+
+        vm_begin_state_list(
+            vm,
+            &vm->next_count
+        );
+
+        for (
+            list_index = 0U;
+            list_index < vm->current_count;
+            list_index++
+        ) {
+            size_t state_index;
+            const NfaState *state;
+
+            state_index =
+                vm->current[list_index];
+
+            state =
+                &vm->program->states[state_index];
+
+            if (
+                state_matches_character(
+                    state,
+                    character
+                )
+            ) {
+                if (
+                    !vm_add_closure(
+                        vm,
+                        vm->next,
+                        &vm->next_count,
+                        state->out1,
+                        position + 1U,
+                        text_length,
+                        error
+                    )
+                ) {
+                    return 0;
+                }
+            }
+        }
+
+        vm_swap_state_lists(vm);
+
+        if (
+            state_list_contains_match(
+                vm,
+                vm->current,
+                vm->current_count
+            )
+        ) {
+            size_t ending_position;
+
+            ending_position = position + 1U;
+
+            if (
+                !require_text_end ||
+                ending_position == text_length
+            ) {
+                longest_end = ending_position;
+            }
+        }
+
+        if (vm->current_count == 0U) {
+            break;
+        }
+    }
+
+    if (longest_end != NFA_INVALID_STATE) {
+        *matched = 1;
+        *match_end = longest_end;
+    }
+
+    return 1;
+}
+
 int nfa_vm_full_match(
     const NfaProgram *program,
     const char *text,
@@ -364,11 +515,8 @@ int nfa_vm_full_match(
 {
     NfaVm vm;
     size_t text_length;
-    size_t position;
-
-    if (matched != NULL) {
-        *matched = 0;
-    }
+    size_t match_end;
+    int success;
 
     if (error != NULL) {
         error->message = NULL;
@@ -382,6 +530,8 @@ int nfa_vm_full_match(
 
         return 0;
     }
+
+    *matched = 0;
 
     if (text == NULL) {
         vm_set_error(
@@ -398,97 +548,99 @@ int nfa_vm_full_match(
 
     text_length = strlen(text);
 
-    vm_begin_state_list(
+    success = vm_run_from(
         &vm,
-        &vm.current_count
+        text,
+        text_length,
+        0U,
+        1,
+        matched,
+        &match_end,
+        error
     );
 
-    if (
-        !vm_add_closure(
-            &vm,
-            vm.current,
-            &vm.current_count,
-            program->start,
-            0U,
-            text_length,
-            error
-        )
-    ) {
-        vm_destroy(&vm);
+    vm_destroy(&vm);
+
+    return success;
+}
+
+int nfa_vm_search(
+    const NfaProgram *program,
+    const char *text,
+    int *matched,
+    NfaMatch *match,
+    VmError *error
+)
+{
+    NfaVm vm;
+    size_t text_length;
+    size_t start_position;
+
+    if (error != NULL) {
+        error->message = NULL;
+    }
+
+    if (matched == NULL || match == NULL) {
+        vm_set_error(
+            error,
+            "VM received a null search-result pointer"
+        );
+
         return 0;
     }
 
-    for (
-        position = 0U;
-        position < text_length;
-        position++
-    ) {
-        size_t state_list_index;
-        unsigned char character;
+    *matched = 0;
+    match->start = 0U;
+    match->end = 0U;
 
-        character =
-            (unsigned char) text[position];
-
-        vm_begin_state_list(
-            &vm,
-            &vm.next_count
+    if (text == NULL) {
+        vm_set_error(
+            error,
+            "VM received null input text"
         );
 
-        for (
-            state_list_index = 0U;
-            state_list_index < vm.current_count;
-            state_list_index++
-        ) {
-            size_t state_index;
-            const NfaState *state;
-
-            state_index =
-                vm.current[state_list_index];
-
-            state =
-                &program->states[state_index];
-
-            if (
-                state_matches_character(
-                    state,
-                    character
-                )
-            ) {
-                if (
-                    !vm_add_closure(
-                        &vm,
-                        vm.next,
-                        &vm.next_count,
-                        state->out1,
-                        position + 1U,
-                        text_length,
-                        error
-                    )
-                ) {
-                    vm_destroy(&vm);
-                    return 0;
-                }
-            }
-        }
-
-        {
-            size_t *temporary_states;
-            size_t temporary_count;
-
-            temporary_states = vm.current;
-            vm.current = vm.next;
-            vm.next = temporary_states;
-
-            temporary_count = vm.current_count;
-            vm.current_count = vm.next_count;
-            vm.next_count = temporary_count;
-        }
-        if (vm.current_count == 0U) {
-            break;
-        }
+        return 0;
     }
 
-    *matched = state_list_contains_match(&vm);
+    if (!vm_initialize(&vm, program, error)) {
+        return 0;
+    }
+
+    text_length = strlen(text);
+    for (
+        start_position = 0U;
+        start_position <= text_length;
+        start_position++
+    ) {
+        int found_at_start;
+        size_t match_end;
+
+        if (
+            !vm_run_from(
+                &vm,
+                text,
+                text_length,
+                start_position,
+                0,
+                &found_at_start,
+                &match_end,
+                error
+            )
+        ) {
+            vm_destroy(&vm);
+            return 0;
+        }
+
+        if (found_at_start) {
+            *matched = 1;
+            match->start = start_position;
+            match->end = match_end;
+
+            vm_destroy(&vm);
+
+            return 1;
+        }
+    }
 
     vm_destroy(&vm);
 
