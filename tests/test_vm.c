@@ -354,7 +354,35 @@ static void test_empty_search_matches(void)
         0U
     );
 }
+static void test_bracket_character_classes(void)
+{
+    expect_full_match("[abc]", "a", 1);
+    expect_full_match("[abc]", "b", 1);
+    expect_full_match("[abc]", "d", 0);
 
+    expect_full_match("[a-z]+", "hello", 1);
+    expect_full_match("[a-z]+", "Hello", 0);
+
+    expect_full_match(
+        "[a-zA-Z0-9_]+",
+        "User_123",
+        1
+    );
+
+    expect_full_match(
+        "[a-zA-Z0-9_]+",
+        "User-123",
+        0
+    );
+
+    expect_full_match("[^0-9]+", "hello", 1);
+    expect_full_match("[^0-9]+", "abc4", 0);
+
+    expect_full_match("[\\]\\-]+", "]-]-", 1);
+
+    expect_full_match("[\\dA-F]+", "19AF", 1);
+    expect_full_match("[\\dA-F]+", "19AG", 0);
+}
 int main(void)
 {
     test_literals();
@@ -368,7 +396,7 @@ int main(void)
     test_anchors();
     test_empty_pattern();
     test_nested_repetition();
-
+    test_bracket_character_classes();
     test_basic_search();
     test_leftmost_search();
     test_leftmost_longest_search();

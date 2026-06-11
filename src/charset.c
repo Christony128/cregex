@@ -22,7 +22,12 @@ void charset_clear(CharSet *set)
         return;
     }
 
-    memset(set->bits, 0, sizeof(set->bits));
+    memset(
+        set->bits,
+        0,
+        sizeof(set->bits)
+    );
+
     set->negated = 0;
 }
 
@@ -39,13 +44,19 @@ void charset_add_char(
         return;
     }
 
-    byte_index = charset_byte_index(character);
-    bit_index = charset_bit_index(character);
+    byte_index =
+        charset_byte_index(character);
 
-    mask = (unsigned char) (1U << bit_index);
+    bit_index =
+        charset_bit_index(character);
+
+    mask =
+        (unsigned char) (1U << bit_index);
 
     set->bits[byte_index] =
-        (unsigned char) (set->bits[byte_index] | mask);
+        (unsigned char) (
+            set->bits[byte_index] | mask
+        );
 }
 
 int charset_add_range(
@@ -74,6 +85,39 @@ int charset_add_range(
     return 1;
 }
 
+void charset_add_set(
+    CharSet *destination,
+    const CharSet *source
+)
+{
+    unsigned int value;
+
+    if (
+        destination == NULL ||
+        source == NULL
+    ) {
+        return;
+    }
+
+    for (value = 0U; value <= 255U; value++) {
+        unsigned char character;
+
+        character = (unsigned char) value;
+
+        if (
+            charset_contains(
+                source,
+                character
+            )
+        ) {
+            charset_add_char(
+                destination,
+                character
+            );
+        }
+    }
+}
+
 void charset_set_negated(
     CharSet *set,
     int negated
@@ -100,10 +144,14 @@ int charset_contains(
         return 0;
     }
 
-    byte_index = charset_byte_index(character);
-    bit_index = charset_bit_index(character);
+    byte_index =
+        charset_byte_index(character);
 
-    mask = (unsigned char) (1U << bit_index);
+    bit_index =
+        charset_bit_index(character);
+
+    mask =
+        (unsigned char) (1U << bit_index);
 
     present =
         (set->bits[byte_index] & mask) != 0;

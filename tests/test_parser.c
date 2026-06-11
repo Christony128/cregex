@@ -145,6 +145,11 @@ static void test_invalid_patterns(void)
     expect_parse_failure("a**");
     expect_parse_failure("a)");
     expect_parse_failure("abc\\");
+    expect_parse_failure("[");
+    expect_parse_failure("[]");
+    expect_parse_failure("[^]");
+    expect_parse_failure("[z-a]");
+    expect_parse_failure("[a-");
 }
 
 int main(void)

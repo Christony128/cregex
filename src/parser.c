@@ -54,6 +54,7 @@ static int token_starts_atom(TokenType type)
         case TOKEN_CARET:
         case TOKEN_DOLLAR:
         case TOKEN_DIGIT_CLASS:
+        case TOKEN_LBRACKET:
         case TOKEN_WORD_CLASS:
         case TOKEN_SPACE_CLASS:
             return 1;
@@ -63,6 +64,8 @@ static int token_starts_atom(TokenType type)
         case TOKEN_PLUS:
         case TOKEN_QUESTION:
         case TOKEN_RPAREN:
+        case TOKEN_RBRACKET:
+        case TOKEN_DASH:
         case TOKEN_END:
         case TOKEN_ERROR:
             return 0;
@@ -131,7 +134,281 @@ static AstNode *make_binary_node(
 
     return node;
 }
+static int class_token_to_character(
+    Token token,
+    unsigned char *character
+)
+{
+    if (character == NULL) {
+        return 0;
+    }
 
+    switch (token.type) {
+        case TOKEN_LITERAL:
+            *character = token.character;
+            return 1;
+
+        case TOKEN_CARET:
+            *character = '^';
+            return 1;
+
+        case TOKEN_DASH:
+            *character = '-';
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+static void add_shorthand_class(
+    CharSet *destination,
+    TokenType type
+)
+{
+    CharSet source;
+
+    switch (type) {
+        case TOKEN_DIGIT_CLASS:
+            source = charset_digit();
+            break;
+
+        case TOKEN_WORD_CLASS:
+            source = charset_word();
+            break;
+
+        case TOKEN_SPACE_CLASS:
+            source = charset_space();
+            break;
+
+        default:
+            return;
+    }
+
+    charset_add_set(
+        destination,
+        &source
+    );
+}
+
+static AstNode *parse_character_class(
+    Parser *parser
+)
+{
+    Token opening;
+    CharSet set;
+    int negated;
+    int item_count;
+
+    opening = parser->current;
+
+    charset_clear(&set);
+
+    negated = 0;
+    item_count = 0;
+
+    parser_advance(parser);
+
+    if (parser->current.type == TOKEN_CARET) {
+        negated = 1;
+        parser_advance(parser);
+    }
+
+    if (parser->current.type == TOKEN_RBRACKET) {
+        parser_set_error(
+            parser,
+            opening.position,
+            "character class cannot be empty"
+        );
+
+        return NULL;
+    }
+
+    while (
+        !parser->failed &&
+        parser->current.type != TOKEN_RBRACKET
+    ) {
+        Token token;
+
+        token = parser->current;
+
+        if (token.type == TOKEN_END) {
+            parser_set_error(
+                parser,
+                opening.position,
+                "missing closing bracket"
+            );
+
+            return NULL;
+        }
+
+        if (
+            token.type == TOKEN_DIGIT_CLASS ||
+            token.type == TOKEN_WORD_CLASS ||
+            token.type == TOKEN_SPACE_CLASS
+        ) {
+            add_shorthand_class(
+                &set,
+                token.type
+            );
+
+            item_count++;
+            parser_advance(parser);
+            continue;
+        }
+
+        {
+            unsigned char first;
+
+            if (
+                !class_token_to_character(
+                    token,
+                    &first
+                )
+            ) {
+                parser_set_error(
+                    parser,
+                    token.position,
+                    "invalid token inside character class"
+                );
+
+                return NULL;
+            }
+
+            parser_advance(parser);
+
+            if (parser->current.type == TOKEN_DASH) {
+                Token after_dash;
+
+                after_dash =
+                    lexer_peek(&parser->lexer);
+
+                /*
+                 * A dash immediately before ] is a
+                 * literal dash:
+                 *
+                 *     [a-]
+                 */
+                if (
+                    after_dash.type ==
+                    TOKEN_RBRACKET
+                ) {
+                    charset_add_char(
+                        &set,
+                        first
+                    );
+
+                    charset_add_char(
+                        &set,
+                        '-'
+                    );
+
+                    item_count += 2;
+
+                    parser_advance(parser);
+                    continue;
+                }
+
+                parser_advance(parser);
+
+                {
+                    unsigned char last;
+
+                    if (
+                        !class_token_to_character(
+                            parser->current,
+                            &last
+                        )
+                    ) {
+                        parser_set_error(
+                            parser,
+                            parser->current.position,
+                            "range endpoint must be a literal character"
+                        );
+
+                        return NULL;
+                    }
+
+                    if (first > last) {
+                        parser_set_error(
+                            parser,
+                            token.position,
+                            "character range is reversed"
+                        );
+
+                        return NULL;
+                    }
+
+                    charset_add_range(
+                        &set,
+                        first,
+                        last
+                    );
+
+                    item_count++;
+                    parser_advance(parser);
+                }
+            } else {
+                charset_add_char(
+                    &set,
+                    first
+                );
+
+                item_count++;
+            }
+        }
+    }
+
+    if (parser->failed) {
+        return NULL;
+    }
+
+    if (parser->current.type != TOKEN_RBRACKET) {
+        parser_set_error(
+            parser,
+            opening.position,
+            "missing closing bracket"
+        );
+
+        return NULL;
+    }
+
+    if (item_count == 0) {
+        parser_set_error(
+            parser,
+            opening.position,
+            "character class cannot be empty"
+        );
+
+        return NULL;
+    }
+
+    parser_advance(parser);
+
+    charset_set_negated(
+        &set,
+        negated
+    );
+
+    {
+        AstNode *node;
+
+        node = ast_make_character_class(
+            &set,
+            opening.position
+        );
+
+        if (node == NULL) {
+            parser_set_error(
+                parser,
+                opening.position,
+                "failed to allocate character class"
+            );
+        }
+
+        return node;
+    }
+}
 static AstNode *parse_atom(Parser *parser)
 {
     AstNode *node;
@@ -177,7 +454,8 @@ static AstNode *parse_atom(Parser *parser)
             }
 
             return node;
-
+        case TOKEN_LBRACKET:
+            return parse_character_class(parser);
         case TOKEN_CARET:
             parser_advance(parser);
 
@@ -356,8 +634,25 @@ static AstNode *parse_atom(Parser *parser)
                 token.position,
                 token.error_message
             );
+            case TOKEN_RBRACKET:
+        parser_set_error(
+            parser,
+            token.position,
+            "unexpected closing bracket"
+        );
 
-            return NULL;
+        return NULL;
+
+        case TOKEN_DASH:
+            parser_set_error(
+                parser,
+                token.position,
+                "unexpected range operator"
+            );
+
+        return NULL;
+
+            
     }
 
     parser_set_error(

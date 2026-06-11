@@ -9,9 +9,13 @@ typedef struct {
     const char *pattern;
     size_t length;
     size_t position;
+    int in_character_class;
 } Lexer;
 
-void lexer_init(Lexer *lexer, const char *pattern);
+void lexer_init(
+    Lexer *lexer,
+    const char *pattern
+);
 
 Token lexer_next(Lexer *lexer);
 

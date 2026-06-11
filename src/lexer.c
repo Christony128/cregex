@@ -33,7 +33,10 @@ static Token make_error_token(
     return token;
 }
 
-void lexer_init(Lexer *lexer, const char *pattern)
+void lexer_init(
+    Lexer *lexer,
+    const char *pattern
+)
 {
     if (lexer == NULL) {
         return;
@@ -45,7 +48,124 @@ void lexer_init(Lexer *lexer, const char *pattern)
 
     lexer->pattern = pattern;
     lexer->length = strlen(pattern);
-    lexer->position = 0;
+    lexer->position = 0U;
+    lexer->in_character_class = 0;
+}
+
+static Token lexer_scan_escape(
+    Lexer *lexer,
+    size_t token_position
+)
+{
+    unsigned char escaped;
+
+    if (lexer->position >= lexer->length) {
+        return make_error_token(
+            token_position,
+            "pattern ends with an incomplete escape"
+        );
+    }
+
+    escaped =
+        (unsigned char) lexer->pattern[lexer->position];
+
+    lexer->position++;
+
+    switch (escaped) {
+        case 'd':
+            return make_token(
+                TOKEN_DIGIT_CLASS,
+                escaped,
+                token_position
+            );
+
+        case 'w':
+            return make_token(
+                TOKEN_WORD_CLASS,
+                escaped,
+                token_position
+            );
+
+        case 's':
+            return make_token(
+                TOKEN_SPACE_CLASS,
+                escaped,
+                token_position
+            );
+
+        case 'n':
+            return make_token(
+                TOKEN_LITERAL,
+                '\n',
+                token_position
+            );
+
+        case 'r':
+            return make_token(
+                TOKEN_LITERAL,
+                '\r',
+                token_position
+            );
+
+        case 't':
+            return make_token(
+                TOKEN_LITERAL,
+                '\t',
+                token_position
+            );
+
+        default:
+            return make_token(
+                TOKEN_LITERAL,
+                escaped,
+                token_position
+            );
+    }
+}
+
+static Token lexer_scan_inside_class(
+    Lexer *lexer,
+    unsigned char current,
+    size_t token_position
+)
+{
+    switch (current) {
+        case ']':
+            lexer->in_character_class = 0;
+
+            return make_token(
+                TOKEN_RBRACKET,
+                current,
+                token_position
+            );
+
+        case '-':
+            return make_token(
+                TOKEN_DASH,
+                current,
+                token_position
+            );
+
+        case '^':
+            return make_token(
+                TOKEN_CARET,
+                current,
+                token_position
+            );
+
+        case '\\':
+            return lexer_scan_escape(
+                lexer,
+                token_position
+            );
+
+        default:
+            return make_token(
+                TOKEN_LITERAL,
+                current,
+                token_position
+            );
+    }
 }
 
 static Token lexer_scan(Lexer *lexer)
@@ -63,82 +183,104 @@ static Token lexer_scan(Lexer *lexer)
 
     token_position = lexer->position;
 
-    current = (unsigned char) lexer->pattern[lexer->position];
+    current =
+        (unsigned char) lexer->pattern[lexer->position];
+
     lexer->position++;
+
+    if (lexer->in_character_class) {
+        return lexer_scan_inside_class(
+            lexer,
+            current,
+            token_position
+        );
+    }
 
     switch (current) {
         case '.':
-            return make_token(TOKEN_DOT, current, token_position);
+            return make_token(
+                TOKEN_DOT,
+                current,
+                token_position
+            );
 
         case '|':
-            return make_token(TOKEN_PIPE, current, token_position);
+            return make_token(
+                TOKEN_PIPE,
+                current,
+                token_position
+            );
 
         case '*':
-            return make_token(TOKEN_STAR, current, token_position);
+            return make_token(
+                TOKEN_STAR,
+                current,
+                token_position
+            );
 
         case '+':
-            return make_token(TOKEN_PLUS, current, token_position);
+            return make_token(
+                TOKEN_PLUS,
+                current,
+                token_position
+            );
 
         case '?':
-            return make_token(TOKEN_QUESTION, current, token_position);
+            return make_token(
+                TOKEN_QUESTION,
+                current,
+                token_position
+            );
 
         case '(':
-            return make_token(TOKEN_LPAREN, current, token_position);
+            return make_token(
+                TOKEN_LPAREN,
+                current,
+                token_position
+            );
 
         case ')':
-            return make_token(TOKEN_RPAREN, current, token_position);
+            return make_token(
+                TOKEN_RPAREN,
+                current,
+                token_position
+            );
+
+        case '[':
+            lexer->in_character_class = 1;
+
+            return make_token(
+                TOKEN_LBRACKET,
+                current,
+                token_position
+            );
+
+        case ']':
+            return make_token(
+                TOKEN_RBRACKET,
+                current,
+                token_position
+            );
 
         case '^':
-            return make_token(TOKEN_CARET, current, token_position);
+            return make_token(
+                TOKEN_CARET,
+                current,
+                token_position
+            );
 
         case '$':
-            return make_token(TOKEN_DOLLAR, current, token_position);
+            return make_token(
+                TOKEN_DOLLAR,
+                current,
+                token_position
+            );
 
-        case '\\': {
-            unsigned char escaped;
-
-            if (lexer->position >= lexer->length) {
-                return make_error_token(
-                    token_position,
-                    "pattern ends with an incomplete escape"
-                );
-            }
-
-            escaped =
-                (unsigned char) lexer->pattern[lexer->position];
-
-            lexer->position++;
-
-            switch (escaped) {
-                case 'd':
-                    return make_token(
-                        TOKEN_DIGIT_CLASS,
-                        escaped,
-                        token_position
-                    );
-
-                case 'w':
-                    return make_token(
-                        TOKEN_WORD_CLASS,
-                        escaped,
-                        token_position
-                    );
-
-                case 's':
-                    return make_token(
-                        TOKEN_SPACE_CLASS,
-                        escaped,
-                        token_position
-                    );
-
-                default:
-                    return make_token(
-                        TOKEN_LITERAL,
-                        escaped,
-                        token_position
-                    );
-            }
-        }
+        case '\\':
+            return lexer_scan_escape(
+                lexer,
+                token_position
+            );
 
         default:
             return make_token(
@@ -153,7 +295,7 @@ Token lexer_next(Lexer *lexer)
 {
     if (lexer == NULL) {
         return make_error_token(
-            0,
+            0U,
             "lexer_next received a null lexer"
         );
     }
@@ -167,7 +309,7 @@ Token lexer_peek(const Lexer *lexer)
 
     if (lexer == NULL) {
         return make_error_token(
-            0,
+            0U,
             "lexer_peek received a null lexer"
         );
     }
