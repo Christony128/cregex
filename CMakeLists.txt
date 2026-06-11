@@ -28,6 +28,7 @@ add_library(cregex_core STATIC
     src/nfa.c
     src/compiler.c
     src/vm.c
+    src/regex.c
 )
 
 target_include_directories(cregex_core
@@ -128,4 +129,18 @@ target_link_libraries(test_vm
 add_test(
     NAME vm_tests
     COMMAND test_vm
+)
+
+add_executable(test_regex
+    tests/test_regex.c
+)
+
+target_link_libraries(test_regex
+    PRIVATE
+        cregex_core
+)
+
+add_test(
+    NAME public_api_tests
+    COMMAND test_regex
 )
