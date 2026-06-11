@@ -25,6 +25,7 @@ add_library(cregex_core STATIC
     src/charset.c
     src/ast.c
     src/parser.c
+    src/nfa.c
 )
 
 target_include_directories(cregex_core
@@ -83,4 +84,17 @@ target_link_libraries(test_parser
 add_test(
     NAME parser_tests
     COMMAND test_parser
+)
+add_executable(test_nfa
+    tests/test_nfa.c
+)
+
+target_link_libraries(test_nfa
+    PRIVATE
+        cregex_core
+)
+
+add_test(
+    NAME nfa_tests
+    COMMAND test_nfa
 )
