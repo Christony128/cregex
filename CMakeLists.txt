@@ -22,6 +22,8 @@ endif()
 add_library(cregex_core STATIC
     src/token.c
     src/lexer.c
+    src/charset.c
+    src/ast.c
 )
 
 target_include_directories(cregex_core
@@ -52,4 +54,18 @@ target_link_libraries(test_lexer
 add_test(
     NAME lexer_tests
     COMMAND test_lexer
+)
+
+add_executable(test_ast
+    tests/test_ast.c
+)
+
+target_link_libraries(test_ast
+    PRIVATE
+        cregex_core
+)
+
+add_test(
+    NAME ast_tests
+    COMMAND test_ast
 )
