@@ -1,44 +1,13 @@
-#include "cregex/lexer.h"
-#include "cregex/token.h"
+#include "cregex/ast.h"
+#include "cregex/parser.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-static void print_token(Token token)
-{
-    printf(
-        "%-14s position=%lu",
-        token_type_name(token.type),
-        (unsigned long) token.position
-    );
-
-    if (token.type == TOKEN_LITERAL) {
-        if (isprint((int) token.character)) {
-            printf(" value='%c'", token.character);
-        } else {
-            printf(
-                " value=0x%02X",
-                (unsigned int) token.character
-            );
-        }
-    }
-
-    if (token.type == TOKEN_ERROR) {
-        printf(
-            " message=\"%s\"",
-            token.error_message != NULL
-                ? token.error_message
-                : "unknown lexer error"
-        );
-    }
-
-    putchar('\n');
-}
-
 int main(int argc, char **argv)
 {
-    Lexer lexer;
+    ParserError error;
+    AstNode *root;
 
     if (argc != 2) {
         fprintf(
@@ -50,21 +19,23 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    lexer_init(&lexer, argv[1]);
+    root = parser_parse(argv[1], &error);
 
-    for (;;) {
-        Token token = lexer_next(&lexer);
+    if (root == NULL) {
+        fprintf(
+            stderr,
+            "Regex error at position %lu: %s\n",
+            (unsigned long) error.position,
+            error.message != NULL
+                ? error.message
+                : "unknown parser error"
+        );
 
-        print_token(token);
-
-        if (token.type == TOKEN_ERROR) {
-            return EXIT_FAILURE;
-        }
-
-        if (token.type == TOKEN_END) {
-            break;
-        }
+        return EXIT_FAILURE;
     }
+
+    ast_print(stdout, root);
+    ast_free(root);
 
     return EXIT_SUCCESS;
 }
