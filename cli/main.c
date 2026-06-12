@@ -11,7 +11,8 @@
 typedef enum {
     CLI_MODE_INSPECT,
     CLI_MODE_FULL_MATCH,
-    CLI_MODE_SEARCH
+    CLI_MODE_SEARCH,
+    CLI_MODE_FIND_ALL
 } CliMode;
 
 static void print_usage(const char *program_name)
@@ -22,7 +23,9 @@ static void print_usage(const char *program_name)
         "  %s <pattern>\n"
         "  %s <pattern> <text>\n"
         "  %s --full <pattern> <text>\n"
-        "  %s --search <pattern> <text>\n",
+        "  %s --search <pattern> <text>\n"
+        "  %s --find-all <pattern> <text>\n",
+        program_name,
         program_name,
         program_name,
         program_name,
@@ -55,6 +58,33 @@ static void print_match_value(
     puts("\"");
 }
 
+static void print_indexed_match_value(
+    size_t index,
+    const char *text,
+    const NfaMatch *match
+)
+{
+    size_t length;
+
+    length = match->end - match->start;
+
+    printf(
+        "MATCH %lu start=%lu end=%lu value=\"",
+        (unsigned long) index,
+        (unsigned long) match->start,
+        (unsigned long) match->end
+    );
+
+    fwrite(
+        text + match->start,
+        sizeof(char),
+        length,
+        stdout
+    );
+
+    puts("\"");
+}
+
 int main(int argc, char **argv)
 {
     CliMode mode;
@@ -70,8 +100,6 @@ int main(int argc, char **argv)
     text = NULL;
 
     /*
-     * Backward-compatible behavior:
-     *
      *   cregex PATTERN
      *       Print AST and NFA.
      *
@@ -97,6 +125,13 @@ int main(int argc, char **argv)
         strcmp(argv[1], "--search") == 0
     ) {
         mode = CLI_MODE_SEARCH;
+        pattern = argv[2];
+        text = argv[3];
+    } else if (
+        argc == 4 &&
+        strcmp(argv[1], "--find-all") == 0
+    ) {
+        mode = CLI_MODE_FIND_ALL;
         pattern = argv[2];
         text = argv[3];
     } else {
@@ -178,7 +213,7 @@ int main(int argc, char **argv)
         }
 
         puts(matched ? "MATCH" : "NO MATCH");
-    } else {
+    } else if (mode == CLI_MODE_SEARCH) {
         VmError vm_error;
         NfaMatch match;
         int matched;
@@ -209,6 +244,67 @@ int main(int argc, char **argv)
         if (matched) {
             print_match_value(text, &match);
         } else {
+            puts("NO MATCH");
+        }
+    } else {
+        VmError vm_error;
+        NfaMatch match;
+        size_t match_index;
+        size_t search_start;
+        size_t text_length;
+        int matched;
+
+        match_index = 0U;
+        search_start = 0U;
+        text_length = strlen(text);
+
+        while (search_start <= text_length) {
+            if (
+                !nfa_vm_search_from(
+                    &program,
+                    text,
+                    search_start,
+                    &matched,
+                    &match,
+                    &vm_error
+                )
+            ) {
+                fprintf(
+                    stderr,
+                    "VM error: %s\n",
+                    vm_error.message != NULL
+                        ? vm_error.message
+                        : "unknown VM error"
+                );
+
+                nfa_program_free(&program);
+                ast_free(root);
+
+                return EXIT_FAILURE;
+            }
+
+            if (!matched) {
+                break;
+            }
+
+            print_indexed_match_value(
+                match_index,
+                text,
+                &match
+            );
+
+            match_index++;
+
+            if (match.end > match.start) {
+                search_start = match.end;
+            } else if (match.end < text_length) {
+                search_start = match.end + 1U;
+            } else {
+                break;
+            }
+        }
+
+        if (match_index == 0U) {
             puts("NO MATCH");
         }
     }

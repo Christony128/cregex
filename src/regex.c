@@ -7,6 +7,7 @@
 #include "cregex/vm.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 struct Regex {
     NfaProgram program;
@@ -34,6 +35,82 @@ static void regex_error_set(
 
     error->position = position;
     error->message = message;
+}
+
+static int regex_match_list_append(
+    RegexMatchList *list,
+    size_t *capacity,
+    size_t start,
+    size_t end,
+    RegexError *error
+)
+{
+    RegexMatch *resized_matches;
+    size_t new_capacity;
+    size_t maximum_size;
+
+    if (list->count < *capacity) {
+        list->matches[list->count].start = start;
+        list->matches[list->count].end = end;
+        list->count++;
+
+        return 1;
+    }
+
+    maximum_size = (size_t) -1;
+
+    if (*capacity == 0U) {
+        new_capacity = 8U;
+    } else {
+        if (*capacity > maximum_size / 2U) {
+            regex_error_set(
+                error,
+                REGEX_ERROR_NO_POSITION,
+                "too many regex matches"
+            );
+
+            return 0;
+        }
+
+        new_capacity = *capacity * 2U;
+    }
+
+    if (
+        new_capacity >
+        maximum_size / sizeof(RegexMatch)
+    ) {
+        regex_error_set(
+            error,
+            REGEX_ERROR_NO_POSITION,
+            "regex match list is too large"
+        );
+
+        return 0;
+    }
+
+    resized_matches = (RegexMatch *) realloc(
+        list->matches,
+        new_capacity * sizeof(RegexMatch)
+    );
+
+    if (resized_matches == NULL) {
+        regex_error_set(
+            error,
+            REGEX_ERROR_NO_POSITION,
+            "failed to allocate regex match list"
+        );
+
+        return 0;
+    }
+
+    list->matches = resized_matches;
+    *capacity = new_capacity;
+
+    list->matches[list->count].start = start;
+    list->matches[list->count].end = end;
+    list->count++;
+
+    return 1;
 }
 
 Regex *regex_compile(
@@ -273,6 +350,125 @@ int regex_search(
     }
 
     return 1;
+}
+
+int regex_find_all(
+    const Regex *regex,
+    const char *text,
+    RegexMatchList *result,
+    RegexError *error
+)
+{
+    VmError vm_error;
+    NfaMatch match;
+    size_t capacity;
+    size_t search_start;
+    size_t text_length;
+    int matched;
+
+    regex_error_clear(error);
+
+    if (result != NULL) {
+        result->matches = NULL;
+        result->count = 0U;
+    }
+
+    if (regex == NULL) {
+        regex_error_set(
+            error,
+            REGEX_ERROR_NO_POSITION,
+            "compiled regex must not be null"
+        );
+
+        return 0;
+    }
+
+    if (text == NULL) {
+        regex_error_set(
+            error,
+            REGEX_ERROR_NO_POSITION,
+            "input text must not be null"
+        );
+
+        return 0;
+    }
+
+    if (result == NULL) {
+        regex_error_set(
+            error,
+            REGEX_ERROR_NO_POSITION,
+            "match-list pointer must not be null"
+        );
+
+        return 0;
+    }
+
+    capacity = 0U;
+    search_start = 0U;
+    text_length = strlen(text);
+
+    while (search_start <= text_length) {
+        if (
+            !nfa_vm_search_from(
+                &regex->program,
+                text,
+                search_start,
+                &matched,
+                &match,
+                &vm_error
+            )
+        ) {
+            regex_match_list_free(result);
+
+            regex_error_set(
+                error,
+                REGEX_ERROR_NO_POSITION,
+                vm_error.message != NULL
+                    ? vm_error.message
+                    : "regex VM failed during find-all"
+            );
+
+            return 0;
+        }
+
+        if (!matched) {
+            break;
+        }
+
+        if (
+            !regex_match_list_append(
+                result,
+                &capacity,
+                match.start,
+                match.end,
+                error
+            )
+        ) {
+            regex_match_list_free(result);
+            return 0;
+        }
+
+        if (match.end > match.start) {
+            search_start = match.end;
+        } else if (match.end < text_length) {
+            search_start = match.end + 1U;
+        } else {
+            break;
+        }
+    }
+
+    return 1;
+}
+
+void regex_match_list_free(RegexMatchList *list)
+{
+    if (list == NULL) {
+        return;
+    }
+
+    free(list->matches);
+    list->matches = NULL;
+    list->count = 0U;
 }
 
 void regex_free(Regex *regex)

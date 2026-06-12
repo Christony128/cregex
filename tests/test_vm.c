@@ -145,6 +145,55 @@ static void expect_search(
     nfa_program_free(&program);
 }
 
+static void expect_search_from(
+    const char *pattern,
+    const char *text,
+    size_t search_start,
+    int expected_found,
+    size_t expected_start,
+    size_t expected_end
+)
+{
+    NfaProgram program;
+    VmError vm_error;
+    NfaMatch match;
+    int matched;
+    int success;
+
+    program = compile_pattern(pattern);
+
+    success = nfa_vm_search_from(
+        &program,
+        text,
+        search_start,
+        &matched,
+        &match,
+        &vm_error
+    );
+
+    if (!success) {
+        fprintf(
+            stderr,
+            "Search-from failed for pattern \"%s\" and text \"%s\": %s\n",
+            pattern,
+            text,
+            vm_error.message != NULL
+                ? vm_error.message
+                : "unknown VM error"
+        );
+    }
+
+    assert(success);
+    assert(matched == expected_found);
+
+    if (expected_found) {
+        assert(match.start == expected_start);
+        assert(match.end == expected_end);
+    }
+
+    nfa_program_free(&program);
+}
+
 static void test_literals(void)
 {
     expect_full_match("a", "a", 1);
@@ -407,6 +456,73 @@ static void test_search_with_character_class(void)
     );
 }
 
+static void test_search_from_offset(void)
+{
+    expect_search_from(
+        "a+",
+        "baaa caa",
+        4U,
+        1,
+        6U,
+        8U
+    );
+
+    expect_search_from(
+        "^abc",
+        "abcabc",
+        1U,
+        0,
+        0U,
+        0U
+    );
+
+    expect_search_from(
+        "abc$",
+        "abcabc",
+        1U,
+        1,
+        3U,
+        6U
+    );
+
+    expect_search_from(
+        "$",
+        "abc",
+        3U,
+        1,
+        3U,
+        3U
+    );
+}
+
+static void test_search_from_rejects_invalid_offset(void)
+{
+    NfaProgram program;
+    VmError vm_error;
+    NfaMatch match;
+    int matched;
+
+    program = compile_pattern("a");
+
+    assert(
+        !nfa_vm_search_from(
+            &program,
+            "abc",
+            4U,
+            &matched,
+            &match,
+            &vm_error
+        )
+    );
+
+    assert(!matched);
+    assert(match.start == 0U);
+    assert(match.end == 0U);
+    assert(vm_error.message != NULL);
+
+    nfa_program_free(&program);
+}
+
 static void test_empty_search_matches(void)
 {
     expect_search(
@@ -446,6 +562,8 @@ int main(void)
     test_leftmost_longest_search();
     test_search_with_anchors();
     test_search_with_character_class();
+    test_search_from_offset();
+    test_search_from_rejects_invalid_offset();
     test_empty_search_matches();
 
     puts("All VM tests passed.");

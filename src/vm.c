@@ -12,8 +12,10 @@ typedef struct {
 
     size_t *next;
     size_t next_count;
+
     size_t *work;
     size_t work_count;
+
     unsigned int *seen;
     unsigned int generation;
 } NfaVm;
@@ -136,6 +138,7 @@ static void vm_begin_state_list(
 )
 {
     *count = 0U;
+
     if (vm->generation == UINT_MAX) {
         memset(
             vm->seen,
@@ -359,6 +362,7 @@ static void vm_swap_state_lists(NfaVm *vm)
     vm->current_count = vm->next_count;
     vm->next_count = temporary_count;
 }
+
 static int vm_run_from(
     NfaVm *vm,
     const char *text,
@@ -405,6 +409,7 @@ static int vm_run_from(
     ) {
         return 0;
     }
+
     if (
         state_list_contains_match(
             vm,
@@ -564,9 +569,10 @@ int nfa_vm_full_match(
     return success;
 }
 
-int nfa_vm_search(
+int nfa_vm_search_from(
     const NfaProgram *program,
     const char *text,
+    size_t search_start,
     int *matched,
     NfaMatch *match,
     VmError *error
@@ -602,13 +608,23 @@ int nfa_vm_search(
         return 0;
     }
 
+    text_length = strlen(text);
+
+    if (search_start > text_length) {
+        vm_set_error(
+            error,
+            "search start position exceeds input length"
+        );
+
+        return 0;
+    }
+
     if (!vm_initialize(&vm, program, error)) {
         return 0;
     }
 
-    text_length = strlen(text);
     for (
-        start_position = 0U;
+        start_position = search_start;
         start_position <= text_length;
         start_position++
     ) {
@@ -645,4 +661,22 @@ int nfa_vm_search(
     vm_destroy(&vm);
 
     return 1;
+}
+
+int nfa_vm_search(
+    const NfaProgram *program,
+    const char *text,
+    int *matched,
+    NfaMatch *match,
+    VmError *error
+)
+{
+    return nfa_vm_search_from(
+        program,
+        text,
+        0U,
+        matched,
+        match,
+        error
+    );
 }
