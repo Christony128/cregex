@@ -12,7 +12,8 @@ typedef enum {
     CLI_MODE_INSPECT,
     CLI_MODE_FULL_MATCH,
     CLI_MODE_SEARCH,
-    CLI_MODE_FIND_ALL
+    CLI_MODE_FIND_ALL,
+    CLI_MODE_PARSE_TREE
 } CliMode;
 
 static void print_usage(const char *program_name)
@@ -24,7 +25,9 @@ static void print_usage(const char *program_name)
         "  %s <pattern> <text>\n"
         "  %s --full <pattern> <text>\n"
         "  %s --search <pattern> <text>\n"
-        "  %s --find-all <pattern> <text>\n",
+        "  %s --find-all <pattern> <text>\n"
+        "  %s --tree <pattern>\n",
+        program_name,
         program_name,
         program_name,
         program_name,
@@ -99,14 +102,13 @@ int main(int argc, char **argv)
 
     text = NULL;
 
-    /*
-     *   cregex PATTERN
-     *       Print AST and NFA.
-     *
-     *   cregex PATTERN TEXT
-     *       Perform a full match.
-     */
-    if (argc == 2) {
+    if (
+        argc == 3 &&
+        strcmp(argv[1], "--tree") == 0
+    ) {
+        mode = CLI_MODE_PARSE_TREE;
+        pattern = argv[2];
+    } else if (argc == 2) {
         mode = CLI_MODE_INSPECT;
         pattern = argv[1];
     } else if (argc == 3) {
@@ -137,6 +139,33 @@ int main(int argc, char **argv)
     } else {
         print_usage(argv[0]);
         return EXIT_FAILURE;
+    }
+
+    if (mode == CLI_MODE_PARSE_TREE) {
+        ParseTreeNode *tree;
+
+        tree = parser_parse_tree(
+            pattern,
+            &parser_error
+        );
+
+        if (tree == NULL) {
+            fprintf(
+                stderr,
+                "Regex error at position %lu: %s\n",
+                (unsigned long) parser_error.position,
+                parser_error.message != NULL
+                    ? parser_error.message
+                    : "unknown parser error"
+            );
+
+            return EXIT_FAILURE;
+        }
+
+        parse_tree_print(stdout, tree);
+        parse_tree_free(tree);
+
+        return EXIT_SUCCESS;
     }
 
     root = parser_parse(

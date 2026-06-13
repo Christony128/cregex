@@ -6,6 +6,9 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#define CREGEX_REPEAT_UNBOUNDED ((size_t) -1)
+#define CREGEX_MAX_REPEAT_COUNT ((size_t) 1000U)
+
 typedef enum {
     AST_EMPTY,
     AST_LITERAL,
@@ -18,6 +21,7 @@ typedef enum {
     AST_STAR,
     AST_PLUS,
     AST_OPTIONAL,
+    AST_REPEAT,
 
     AST_ASSERT_START,
     AST_ASSERT_END
@@ -31,7 +35,6 @@ struct AstNode {
 
     union {
         unsigned char character;
-
         CharSet character_class;
 
         struct {
@@ -40,6 +43,12 @@ struct AstNode {
         } binary;
 
         AstNode *child;
+
+        struct {
+            AstNode *child;
+            size_t minimum;
+            size_t maximum;
+        } repetition;
     } value;
 };
 
@@ -63,9 +72,17 @@ AstNode *ast_make_assertion(
     AstType type,
     size_t position
 );
+
 AstNode *ast_make_unary(
     AstType type,
     AstNode *child,
+    size_t position
+);
+
+AstNode *ast_make_repeat(
+    AstNode *child,
+    size_t minimum,
+    size_t maximum,
     size_t position
 );
 

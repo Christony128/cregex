@@ -262,6 +262,20 @@ static Token lexer_scan(Lexer *lexer)
                 token_position
             );
 
+        case '{':
+            return make_token(
+                TOKEN_LBRACE,
+                current,
+                token_position
+            );
+
+        case '}':
+            return make_token(
+                TOKEN_RBRACE,
+                current,
+                token_position
+            );
+
         case '^':
             return make_token(
                 TOKEN_CARET,

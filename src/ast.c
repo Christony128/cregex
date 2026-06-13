@@ -52,6 +52,9 @@ const char *ast_type_name(AstType type)
         case AST_OPTIONAL:
             return "OPTIONAL";
 
+        case AST_REPEAT:
+            return "REPEAT";
+
         case AST_ASSERT_START:
             return "ASSERT_START";
 
@@ -110,8 +113,7 @@ AstNode *ast_make_character_class(
         return NULL;
     }
 
-    node->value.character_class =
-        *character_class;
+    node->value.character_class = *character_class;
 
     return node;
 }
@@ -162,6 +164,43 @@ AstNode *ast_make_unary(
     return node;
 }
 
+AstNode *ast_make_repeat(
+    AstNode *child,
+    size_t minimum,
+    size_t maximum,
+    size_t position
+)
+{
+    AstNode *node;
+
+    if (child == NULL) {
+        return NULL;
+    }
+
+    if (minimum > CREGEX_MAX_REPEAT_COUNT) {
+        return NULL;
+    }
+
+    if (
+        maximum != CREGEX_REPEAT_UNBOUNDED &&
+        (maximum < minimum || maximum > CREGEX_MAX_REPEAT_COUNT)
+    ) {
+        return NULL;
+    }
+
+    node = ast_allocate(AST_REPEAT, position);
+
+    if (node == NULL) {
+        return NULL;
+    }
+
+    node->value.repetition.child = child;
+    node->value.repetition.minimum = minimum;
+    node->value.repetition.maximum = maximum;
+
+    return node;
+}
+
 AstNode *ast_make_binary(
     AstType type,
     AstNode *left,
@@ -201,7 +240,7 @@ static void ast_print_indent(
 {
     unsigned int index;
 
-    for (index = 0; index < depth; index++) {
+    for (index = 0U; index < depth; index++) {
         fputs("  ", output);
     }
 }
@@ -288,6 +327,46 @@ static void ast_print_recursive(
 
             return;
 
+        case AST_REPEAT:
+            if (
+                node->value.repetition.maximum ==
+                CREGEX_REPEAT_UNBOUNDED
+            ) {
+                fprintf(
+                    output,
+                    "REPEAT {%lu,}\n",
+                    (unsigned long)
+                        node->value.repetition.minimum
+                );
+            } else if (
+                node->value.repetition.minimum ==
+                node->value.repetition.maximum
+            ) {
+                fprintf(
+                    output,
+                    "REPEAT {%lu}\n",
+                    (unsigned long)
+                        node->value.repetition.minimum
+                );
+            } else {
+                fprintf(
+                    output,
+                    "REPEAT {%lu,%lu}\n",
+                    (unsigned long)
+                        node->value.repetition.minimum,
+                    (unsigned long)
+                        node->value.repetition.maximum
+                );
+            }
+
+            ast_print_recursive(
+                output,
+                node->value.repetition.child,
+                depth + 1U
+            );
+
+            return;
+
         case AST_EMPTY:
         case AST_DOT:
         case AST_ASSERT_START:
@@ -313,7 +392,7 @@ void ast_print(
         return;
     }
 
-    ast_print_recursive(output, node, 0);
+    ast_print_recursive(output, node, 0U);
 }
 
 void ast_free(AstNode *node)
@@ -333,6 +412,10 @@ void ast_free(AstNode *node)
         case AST_PLUS:
         case AST_OPTIONAL:
             ast_free(node->value.child);
+            break;
+
+        case AST_REPEAT:
+            ast_free(node->value.repetition.child);
             break;
 
         case AST_EMPTY:

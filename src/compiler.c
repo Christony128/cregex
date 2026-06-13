@@ -72,7 +72,6 @@ static void patch_list_free(PatchReference *list)
         PatchReference *next;
 
         next = list->next;
-
         free(list);
         list = next;
     }
@@ -96,7 +95,6 @@ static PatchReference *patch_list_join(
     }
 
     current->next = second;
-
     return first;
 }
 
@@ -161,7 +159,6 @@ static int patch_list_apply_and_free(
     );
 
     patch_list_free(list);
-
     return success;
 }
 
@@ -207,21 +204,32 @@ static int compile_single_output_state(
     return 1;
 }
 
+static int compile_empty_at(
+    Compiler *compiler,
+    size_t position,
+    Fragment *fragment
+)
+{
+    size_t jump;
+
+    jump = nfa_program_add_jump(compiler->program);
+
+    return compile_single_output_state(
+        compiler,
+        jump,
+        position,
+        fragment
+    );
+}
+
 static int compile_empty(
     Compiler *compiler,
     const AstNode *node,
     Fragment *fragment
 )
 {
-    size_t jump;
-
-    jump = nfa_program_add_jump(
-        compiler->program
-    );
-
-    return compile_single_output_state(
+    return compile_empty_at(
         compiler,
-        jump,
         node->position,
         fragment
     );
@@ -256,9 +264,7 @@ static int compile_dot(
 {
     size_t state;
 
-    state = nfa_program_add_any(
-        compiler->program
-    );
+    state = nfa_program_add_any(compiler->program);
 
     return compile_single_output_state(
         compiler,
@@ -315,6 +321,30 @@ static int compile_assertion(
     );
 }
 
+static int fragment_append(
+    Compiler *compiler,
+    Fragment *left,
+    Fragment *right,
+    size_t position
+)
+{
+    if (
+        !patch_list_apply_and_free(
+            compiler,
+            left->out,
+            right->start,
+            position
+        )
+    ) {
+        patch_list_free(right->out);
+        left->out = NULL;
+        return 0;
+    }
+
+    left->out = right->out;
+    return 1;
+}
+
 static int compile_concatenation(
     Compiler *compiler,
     const AstNode *node,
@@ -346,20 +376,17 @@ static int compile_concatenation(
     }
 
     if (
-        !patch_list_apply_and_free(
+        !fragment_append(
             compiler,
-            left.out,
-            right.start,
+            &left,
+            &right,
             node->position
         )
     ) {
-        patch_list_free(right.out);
         return 0;
     }
 
-    fragment->start = left.start;
-    fragment->out = right.out;
-
+    *fragment = left;
     return 1;
 }
 
@@ -394,9 +421,7 @@ static int compile_alternation(
         return 0;
     }
 
-    split = nfa_program_add_split(
-        compiler->program
-    );
+    split = nfa_program_add_split(compiler->program);
 
     if (split == NFA_INVALID_STATE) {
         patch_list_free(left.out);
@@ -436,7 +461,6 @@ static int compile_alternation(
     }
 
     fragment->start = split;
-
     fragment->out = patch_list_join(
         left.out,
         right.out
@@ -445,9 +469,10 @@ static int compile_alternation(
     return 1;
 }
 
-static int compile_star(
+static int compile_star_child(
     Compiler *compiler,
-    const AstNode *node,
+    const AstNode *child_node,
+    size_t position,
     Fragment *fragment
 )
 {
@@ -455,27 +480,19 @@ static int compile_star(
     PatchReference *exit_reference;
     size_t split;
 
-    if (
-        !compile_node(
-            compiler,
-            node->value.child,
-            &child
-        )
-    ) {
+    if (!compile_node(compiler, child_node, &child)) {
         return 0;
     }
 
-    split = nfa_program_add_split(
-        compiler->program
-    );
+    split = nfa_program_add_split(compiler->program);
 
     if (split == NFA_INVALID_STATE) {
         patch_list_free(child.out);
 
         compiler_set_error(
             compiler,
-            node->position,
-            "failed to allocate star state"
+            position,
+            "failed to allocate repetition state"
         );
 
         return 0;
@@ -492,8 +509,8 @@ static int compile_star(
 
         compiler_set_error(
             compiler,
-            node->position,
-            "failed to connect star body"
+            position,
+            "failed to connect repetition body"
         );
 
         return 0;
@@ -504,7 +521,7 @@ static int compile_star(
             compiler,
             child.out,
             split,
-            node->position
+            position
         )
     ) {
         return 0;
@@ -514,7 +531,7 @@ static int compile_star(
         compiler,
         split,
         2,
-        node->position
+        position
     );
 
     if (exit_reference == NULL) {
@@ -527,9 +544,10 @@ static int compile_star(
     return 1;
 }
 
-static int compile_plus(
+static int compile_plus_child(
     Compiler *compiler,
-    const AstNode *node,
+    const AstNode *child_node,
+    size_t position,
     Fragment *fragment
 )
 {
@@ -537,26 +555,18 @@ static int compile_plus(
     PatchReference *exit_reference;
     size_t split;
 
-    if (
-        !compile_node(
-            compiler,
-            node->value.child,
-            &child
-        )
-    ) {
+    if (!compile_node(compiler, child_node, &child)) {
         return 0;
     }
 
-    split = nfa_program_add_split(
-        compiler->program
-    );
+    split = nfa_program_add_split(compiler->program);
 
     if (split == NFA_INVALID_STATE) {
         patch_list_free(child.out);
 
         compiler_set_error(
             compiler,
-            node->position,
+            position,
             "failed to allocate plus state"
         );
 
@@ -574,7 +584,7 @@ static int compile_plus(
 
         compiler_set_error(
             compiler,
-            node->position,
+            position,
             "failed to connect plus loop"
         );
 
@@ -586,7 +596,7 @@ static int compile_plus(
             compiler,
             child.out,
             split,
-            node->position
+            position
         )
     ) {
         return 0;
@@ -596,7 +606,7 @@ static int compile_plus(
         compiler,
         split,
         2,
-        node->position
+        position
     );
 
     if (exit_reference == NULL) {
@@ -609,9 +619,10 @@ static int compile_plus(
     return 1;
 }
 
-static int compile_optional(
+static int compile_optional_child(
     Compiler *compiler,
-    const AstNode *node,
+    const AstNode *child_node,
+    size_t position,
     Fragment *fragment
 )
 {
@@ -619,26 +630,18 @@ static int compile_optional(
     PatchReference *skip_reference;
     size_t split;
 
-    if (
-        !compile_node(
-            compiler,
-            node->value.child,
-            &child
-        )
-    ) {
+    if (!compile_node(compiler, child_node, &child)) {
         return 0;
     }
 
-    split = nfa_program_add_split(
-        compiler->program
-    );
+    split = nfa_program_add_split(compiler->program);
 
     if (split == NFA_INVALID_STATE) {
         patch_list_free(child.out);
 
         compiler_set_error(
             compiler,
-            node->position,
+            position,
             "failed to allocate optional state"
         );
 
@@ -656,7 +659,7 @@ static int compile_optional(
 
         compiler_set_error(
             compiler,
-            node->position,
+            position,
             "failed to connect optional body"
         );
 
@@ -667,7 +670,7 @@ static int compile_optional(
         compiler,
         split,
         2,
-        node->position
+        position
     );
 
     if (skip_reference == NULL) {
@@ -676,12 +679,205 @@ static int compile_optional(
     }
 
     fragment->start = split;
-
     fragment->out = patch_list_join(
         child.out,
         skip_reference
     );
 
+    return 1;
+}
+
+static int compile_star(
+    Compiler *compiler,
+    const AstNode *node,
+    Fragment *fragment
+)
+{
+    return compile_star_child(
+        compiler,
+        node->value.child,
+        node->position,
+        fragment
+    );
+}
+
+static int compile_plus(
+    Compiler *compiler,
+    const AstNode *node,
+    Fragment *fragment
+)
+{
+    return compile_plus_child(
+        compiler,
+        node->value.child,
+        node->position,
+        fragment
+    );
+}
+
+static int compile_optional(
+    Compiler *compiler,
+    const AstNode *node,
+    Fragment *fragment
+)
+{
+    return compile_optional_child(
+        compiler,
+        node->value.child,
+        node->position,
+        fragment
+    );
+}
+
+static int repeat_append_part(
+    Compiler *compiler,
+    Fragment *result,
+    int *has_result,
+    Fragment *part,
+    size_t position
+)
+{
+    if (!*has_result) {
+        *result = *part;
+        *has_result = 1;
+        return 1;
+    }
+
+    return fragment_append(
+        compiler,
+        result,
+        part,
+        position
+    );
+}
+
+static int compile_repeat(
+    Compiler *compiler,
+    const AstNode *node,
+    Fragment *fragment
+)
+{
+    const AstNode *child_node;
+    size_t minimum;
+    size_t maximum;
+    size_t index;
+    Fragment result;
+    int has_result;
+
+    child_node = node->value.repetition.child;
+    minimum = node->value.repetition.minimum;
+    maximum = node->value.repetition.maximum;
+
+    if (
+        child_node == NULL ||
+        minimum > CREGEX_MAX_REPEAT_COUNT ||
+        (
+            maximum != CREGEX_REPEAT_UNBOUNDED &&
+            (
+                maximum < minimum ||
+                maximum > CREGEX_MAX_REPEAT_COUNT
+            )
+        )
+    ) {
+        compiler_set_error(
+            compiler,
+            node->position,
+            "invalid bounded repetition AST node"
+        );
+
+        return 0;
+    }
+
+    result.start = NFA_INVALID_STATE;
+    result.out = NULL;
+    has_result = 0;
+
+    for (index = 0U; index < minimum; index++) {
+        Fragment part;
+
+        if (!compile_node(compiler, child_node, &part)) {
+            patch_list_free(result.out);
+            return 0;
+        }
+
+        if (
+            !repeat_append_part(
+                compiler,
+                &result,
+                &has_result,
+                &part,
+                node->position
+            )
+        ) {
+            return 0;
+        }
+    }
+
+    if (maximum == CREGEX_REPEAT_UNBOUNDED) {
+        Fragment part;
+
+        if (
+            !compile_star_child(
+                compiler,
+                child_node,
+                node->position,
+                &part
+            )
+        ) {
+            patch_list_free(result.out);
+            return 0;
+        }
+
+        if (
+            !repeat_append_part(
+                compiler,
+                &result,
+                &has_result,
+                &part,
+                node->position
+            )
+        ) {
+            return 0;
+        }
+    } else {
+        for (index = minimum; index < maximum; index++) {
+            Fragment part;
+
+            if (
+                !compile_optional_child(
+                    compiler,
+                    child_node,
+                    node->position,
+                    &part
+                )
+            ) {
+                patch_list_free(result.out);
+                return 0;
+            }
+
+            if (
+                !repeat_append_part(
+                    compiler,
+                    &result,
+                    &has_result,
+                    &part,
+                    node->position
+                )
+            ) {
+                return 0;
+            }
+        }
+    }
+
+    if (!has_result) {
+        return compile_empty_at(
+            compiler,
+            node->position,
+            fragment
+        );
+    }
+
+    *fragment = result;
     return 1;
 }
 
@@ -694,7 +890,7 @@ static int compile_node(
     if (node == NULL) {
         compiler_set_error(
             compiler,
-            0,
+            0U,
             "cannot compile a null AST node"
         );
 
@@ -772,6 +968,13 @@ static int compile_node(
                 node,
                 fragment
             );
+
+        case AST_REPEAT:
+            return compile_repeat(
+                compiler,
+                node,
+                fragment
+            );
     }
 
     compiler_set_error(
@@ -795,7 +998,7 @@ int compiler_compile(
 
     compiler.program = program;
     compiler.failed = 0;
-    compiler.error.position = 0;
+    compiler.error.position = 0U;
     compiler.error.message = NULL;
 
     fragment.start = NFA_INVALID_STATE;
@@ -804,7 +1007,7 @@ int compiler_compile(
     if (program == NULL) {
         compiler_set_error(
             &compiler,
-            0,
+            0U,
             "compiler received a null NFA program"
         );
     } else if (
@@ -814,21 +1017,20 @@ int compiler_compile(
     ) {
         compiler_set_error(
             &compiler,
-            0,
+            0U,
             "NFA program must be empty before compilation"
         );
     }
 
-    if (!compiler.failed) {
-        if (
-            !compile_node(
-                &compiler,
-                root,
-                &fragment
-            )
-        ) {
-            compiler.failed = 1;
-        }
+    if (
+        !compiler.failed &&
+        !compile_node(
+            &compiler,
+            root,
+            &fragment
+        )
+    ) {
+        compiler.failed = 1;
     }
 
     if (!compiler.failed) {
@@ -839,7 +1041,7 @@ int compiler_compile(
 
             compiler_set_error(
                 &compiler,
-                0,
+                0U,
                 "failed to allocate match state"
             );
         } else if (
@@ -847,7 +1049,7 @@ int compiler_compile(
                 &compiler,
                 fragment.out,
                 match,
-                0
+                0U
             )
         ) {
             compiler.failed = 1;
@@ -859,7 +1061,7 @@ int compiler_compile(
         ) {
             compiler_set_error(
                 &compiler,
-                0,
+                0U,
                 "failed to set NFA entry point"
             );
         }

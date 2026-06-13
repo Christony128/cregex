@@ -36,6 +36,12 @@ const char *token_type_name(TokenType type)
         case TOKEN_DASH:
             return "DASH";
 
+        case TOKEN_LBRACE:
+            return "LBRACE";
+
+        case TOKEN_RBRACE:
+            return "RBRACE";
+
         case TOKEN_CARET:
             return "CARET";
 

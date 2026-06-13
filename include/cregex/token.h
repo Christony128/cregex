@@ -19,6 +19,9 @@ typedef enum {
     TOKEN_RBRACKET,
     TOKEN_DASH,
 
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
+
     TOKEN_CARET,
     TOKEN_DOLLAR,
 
@@ -34,7 +37,6 @@ typedef struct {
     TokenType type;
     unsigned char character;
     size_t position;
-
     const char *error_message;
 } Token;
 

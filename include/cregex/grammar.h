@@ -1,0 +1,88 @@
+#ifndef CREGEX_GRAMMAR_H
+#define CREGEX_GRAMMAR_H
+
+#include <stddef.h>
+
+typedef enum {
+    PARSE_TERMINAL_LITERAL,
+    PARSE_TERMINAL_DOT,
+    PARSE_TERMINAL_CLASS,
+    PARSE_TERMINAL_CARET,
+    PARSE_TERMINAL_DOLLAR,
+    PARSE_TERMINAL_LPAREN,
+    PARSE_TERMINAL_RPAREN,
+    PARSE_TERMINAL_PIPE,
+    PARSE_TERMINAL_STAR,
+    PARSE_TERMINAL_PLUS,
+    PARSE_TERMINAL_QUESTION,
+    PARSE_TERMINAL_END,
+    PARSE_TERMINAL_COUNT
+} ParseTerminal;
+
+typedef enum {
+    PARSE_NONTERMINAL_REGEX,
+    PARSE_NONTERMINAL_ALTERNATION,
+    PARSE_NONTERMINAL_ALTERNATION_TAIL,
+    PARSE_NONTERMINAL_CONCATENATION,
+    PARSE_NONTERMINAL_CONCATENATION_TAIL,
+    PARSE_NONTERMINAL_REPETITION,
+    PARSE_NONTERMINAL_QUANTIFIER,
+    PARSE_NONTERMINAL_ATOM,
+    PARSE_NONTERMINAL_COUNT
+} ParseNonterminal;
+
+typedef enum {
+    GRAMMAR_SYMBOL_TERMINAL,
+    GRAMMAR_SYMBOL_NONTERMINAL,
+    GRAMMAR_SYMBOL_EPSILON
+} GrammarSymbolType;
+
+typedef struct {
+    GrammarSymbolType type;
+    union {
+        ParseTerminal terminal;
+        ParseNonterminal nonterminal;
+    } value;
+} GrammarSymbol;
+
+typedef enum {
+    PARSE_PRODUCTION_NONE,
+    PARSE_PRODUCTION_REGEX_ALTERNATION_END,
+    PARSE_PRODUCTION_REGEX_END,
+    PARSE_PRODUCTION_ALTERNATION,
+    PARSE_PRODUCTION_ALTERNATION_TAIL_PIPE,
+    PARSE_PRODUCTION_ALTERNATION_TAIL_EMPTY,
+    PARSE_PRODUCTION_CONCATENATION,
+    PARSE_PRODUCTION_CONCATENATION_TAIL_REPETITION,
+    PARSE_PRODUCTION_CONCATENATION_TAIL_EMPTY,
+    PARSE_PRODUCTION_REPETITION,
+    PARSE_PRODUCTION_QUANTIFIER_STAR,
+    PARSE_PRODUCTION_QUANTIFIER_PLUS,
+    PARSE_PRODUCTION_QUANTIFIER_QUESTION,
+    PARSE_PRODUCTION_QUANTIFIER_EMPTY,
+    PARSE_PRODUCTION_ATOM_LITERAL,
+    PARSE_PRODUCTION_ATOM_DOT,
+    PARSE_PRODUCTION_ATOM_CLASS,
+    PARSE_PRODUCTION_ATOM_CARET,
+    PARSE_PRODUCTION_ATOM_DOLLAR,
+    PARSE_PRODUCTION_ATOM_GROUP,
+    PARSE_PRODUCTION_COUNT
+} ParseProduction;
+
+const char *parse_terminal_name(ParseTerminal terminal);
+
+const char *parse_nonterminal_name(ParseNonterminal nonterminal);
+
+const char *parse_production_name(ParseProduction production);
+
+ParseProduction grammar_table_lookup(
+    ParseNonterminal nonterminal,
+    ParseTerminal lookahead
+);
+
+const GrammarSymbol *grammar_production_symbols(
+    ParseProduction production,
+    size_t *count
+);
+
+#endif

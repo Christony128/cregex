@@ -24,6 +24,8 @@ add_library(cregex_core STATIC
     src/lexer.c
     src/charset.c
     src/ast.c
+    src/grammar.c
+    src/parse_tree.c
     src/parser.c
     src/nfa.c
     src/compiler.c
@@ -144,3 +146,4 @@ add_test(
     NAME public_api_tests
     COMMAND test_regex
 )
+
